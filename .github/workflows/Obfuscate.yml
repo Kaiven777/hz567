@@ -21,25 +21,19 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js (Lockfile Bypass)
+      - name: Setup Node.js (No Cache)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: 'npm'  # 强制指定缓存类型
-          cache-dependency-path: '**/nothing'  # 绕过锁文件检查
+          cache: 'false'  # 明确禁用缓存
 
       - name: Install Global Deps
         run: |
-          # 配置npm忽略锁文件
-          npm config set package-lock false
-          npm config set shrinkwrap false
-          
           npm install -g javascript-obfuscator@4.0.2 \
             --no-package-lock \
             --no-audit \
             --no-fund \
-            --global-style \
-            --omit=dev
+            --global-style
 
       - name: Fetch and process
         run: |
@@ -66,5 +60,5 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f _worker.js
           TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-          git commit -m "🔄 Built at $TIMESTAMP" --allow-empty
+          git commit -m "🚀 Built at $TIMESTAMP" --allow-empty
           git push origin main -f
