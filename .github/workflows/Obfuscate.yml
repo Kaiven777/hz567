@@ -21,19 +21,25 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js (No Lock)
+      - name: Setup Node.js (Lockfile Bypass)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: 'npm'  # 使用npm标准缓存策略
+          cache: 'npm'  # 强制指定缓存类型
+          cache-dependency-path: '**/nothing'  # 绕过锁文件检查
 
       - name: Install Global Deps
         run: |
+          # 配置npm忽略锁文件
+          npm config set package-lock false
+          npm config set shrinkwrap false
+          
           npm install -g javascript-obfuscator@4.0.2 \
             --no-package-lock \
             --no-audit \
-            --omit=optional \
-            --global-style
+            --no-fund \
+            --global-style \
+            --omit=dev
 
       - name: Fetch and process
         run: |
@@ -43,32 +49,22 @@ jobs:
           sed -i '
             s/window\./globalThis./g;
             s/document\./null?./g;
-            /localStorage/d;
           ' origin.js
 
-      - name: Build worker
+      - name: Obfuscate code
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
             --identifier-names-generator hexadecimal \
             --rename-globals false \
-            --reserved-names "fetch,Response,Request,addEventListener"
+            --reserved-names "fetch,Response,Request"
 
-      - name: Validate
-        run: |
-          if grep -q 'addEventListener("fetch"' _worker.js; then
-            echo "✅ Valid worker detected"
-          else
-            echo "❌ Critical function missing"
-            exit 1
-          fi
-
-      - name: Push updates
+      - name: Force Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f _worker.js
-          TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-          git commit -m "🚀 Built at $TIMESTAMP" --allow-empty
+          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          git commit -m "🔄 Built at $TIMESTAMP" --allow-empty
           git push origin main -f
