@@ -21,19 +21,19 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js (Uncached)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
-          cache-dependency-path: "./non-existent-path"  # 绕开锁文件检查
+          # 完全禁用缓存配置
+          cache: 'false'  # 明确使用字符串'false'
 
-      - name: Global Install
+      - name: Install Global Deps
         run: |
           npm install -g javascript-obfuscator@4.0.2 \
             --no-package-lock \
             --no-audit \
-            --prefer-offline
+            --no-fund
 
       - name: Fetch and process
         run: |
@@ -42,7 +42,7 @@ jobs:
             --retry 3
           sed -i '
             s/window\./globalThis./g;
-            s/document\.//g;
+            /document\./d;  # 彻底删除所有document引用
           ' origin.js
 
       - name: Build worker
@@ -52,13 +52,13 @@ jobs:
             --compact true \
             --identifier-names-generator hexadecimal \
             --rename-globals false \
-            --control-flow-flattening false \
-            --reserved-names "fetch,Response,Request,addEventListener,caches"
+            --reserved-names "fetch,Response,Request,addEventListener"
 
-      - name: Force Update
+      - name: Commit and push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f _worker.js
-          git commit -m "🤖 Auto-build $(date -u '+%Y-%m-%dT%H:%M%z')" --allow-empty
+          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          git commit -m "🚀 Built at $TIMESTAMP" --allow-empty
           git push origin main -f
