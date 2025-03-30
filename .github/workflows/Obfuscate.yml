@@ -21,44 +21,48 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (No Cache)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          # 完全禁用缓存配置
-          cache: 'false'  # 明确使用字符串'false'
+          # 完全移除cache参数
 
-      - name: Install Global Deps
+      - name: Install dependencies
         run: |
           npm install -g javascript-obfuscator@4.0.2 \
             --no-package-lock \
             --no-audit \
-            --no-fund
+            --no-fund \
+            --global-style
 
       - name: Fetch and process
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js" \
             --retry 3
+          
+          # 强化环境兼容处理
           sed -i '
             s/window\./globalThis./g;
-            /document\./d;  # 彻底删除所有document引用
+            /document\./d;
+            /localStorage/d;
+            /sessionStorage/d;
           ' origin.js
 
-      - name: Build worker
+      - name: Obfuscate code
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --identifier-names-generator hexadecimal \
+            --identifier-names-generator mangled \
             --rename-globals false \
-            --reserved-names "fetch,Response,Request,addEventListener"
+            --reserved-names "fetch,Response,Request,addEventListener,caches"
 
       - name: Commit and push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f _worker.js
-          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-          git commit -m "🚀 Built at $TIMESTAMP" --allow-empty
+          TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
+          git commit -m "🔧 Auto update [$TIMESTAMP]" --allow-empty
           git push origin main -f
