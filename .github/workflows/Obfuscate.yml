@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
 
     steps:
       - name: Checkout code
@@ -21,74 +21,54 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (No Lock)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: 'npm'  # 使用npm标准缓存策略
 
-      - name: Install dependencies
+      - name: Install Global Deps
         run: |
           npm install -g javascript-obfuscator@4.0.2 \
-            --no-package-lock --no-audit --prefer-offline
+            --no-package-lock \
+            --no-audit \
+            --omit=optional \
+            --global-style
 
       - name: Fetch and process
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js" \
-            --retry 3 --retry-delay 5
-          
-          # 增强环境兼容处理
+            --retry 3
           sed -i '
             s/window\./globalThis./g;
             s/document\./null?./g;
             /localStorage/d;
-            /sessionStorage/d;
-            s/console\.log/\/\/ &/g;
           ' origin.js
 
-      - name: Secure obfuscation
+      - name: Build worker
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --identifier-names-generator mangled \
+            --identifier-names-generator hexadecimal \
             --rename-globals false \
-            --control-flow-flattening false \
-            --dead-code-injection false \
-            --reserved-names "fetch,Response,Request,addEventListener,caches,self,clientIP" \
-            --reserved-strings "/whoer|tiktok|bot/i" \
-            --seed 0x529f94
+            --reserved-names "fetch,Response,Request,addEventListener"
 
-      - name: Validate worker
+      - name: Validate
         run: |
-          if ! grep -q 'addEventListener("fetch"' _worker.js; then
-            echo "::error::Missing event listener"
+          if grep -q 'addEventListener("fetch"' _worker.js; then
+            echo "✅ Valid worker detected"
+          else
+            echo "❌ Critical function missing"
             exit 1
           fi
-          echo "✅ Validation passed"
 
-      - name: Configure deployment
-        run: |
-          cat << EOF > wrangler.toml
-          name = "bpb-novel"
-          main = "_worker.js"
-          compatibility_date = "2024-05-01"
-          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
-          workers_dev = false
-          EOF
-
-      - name: Deploy to Cloudflare
-        uses: cloudflare/wrangler-action@3.0.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: publish
-
-      - name: Commit backup
+      - name: Push updates
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f _worker.js wrangler.toml
+          git add -f _worker.js
           TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
-          git commit -m "📦 Backup ${TIMESTAMP}" --allow-empty
+          git commit -m "🚀 Built at $TIMESTAMP" --allow-empty
           git push origin main -f
