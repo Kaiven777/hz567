@@ -4,9 +4,6 @@ on:
   push:
     branches: [main]
 
-env:
-  CI: true
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -34,16 +31,11 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Configure deployment
+      - name: Deploy with Auth
         run: |
-          cat << EOF > wrangler.toml
-          name = "bpb-worker"
-          main = "_worker.js"
-          compatibility_date = "$(date +'%Y-%m-%d')"
-          EOF
-
-      - name: Deploy Worker
-        run: wrangler deploy
+          wrangler deploy _worker.js \
+            --name bpb-worker \
+            --compatibility-date $(date +'%Y-%m-%d')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
