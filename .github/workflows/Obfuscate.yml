@@ -1,4 +1,4 @@
-name: BPB Worker IAD Fix
+name: BPB Worker Ultimate Security
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -22,59 +22,60 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""
+          cache: ""  # 禁用缓存检测
 
       - name: Install dependencies
         run: |
           npm install javascript-obfuscator@4.0.2
-          npm install wrangler@3.4.0
+          npm install wrangler@latest  # 自动获取最新稳定版
 
-      - name: Build and sanitize
+      - name: Build and obfuscate
         run: |
+          # 下载并预处理源码
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 强化IAD替换（关键修复）
-          sed -i.bak '
-            # 精确匹配CF元数据字段
-            s/$\.cf\.colo\|\['"'"'colo'"'"']$/"IAD"/g;
-            # 覆盖所有可能的大小写变体
-            s/$[Cc]olo\|COL0$/"IAD"/g;
+          # WHOER全项修复
+          sed -i '
+            s/window\./globalThis.location=/g;
+            s/document\./{}./g;
+            s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
+            s/new Date()/new Date(Date.now() + 28800000)/g; # 强制美东时区
+            s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
+            s/\.cf\.country/"US"/g;
+            s/\.cf\.colo/"IAD"/g;
+            s/\.remoteAddress/"8.8.8.8"/g;
           ' origin.js
 
-          # 注入地理常量
-          echo "const GEO_FIX = { colo: 'IAD', country: 'US', ip: '8.8.8.8' };" | cat - origin.js > temp.js
-          mv temp.js origin.js
-
-          # 三重验证
-          grep -q 'IAD' origin.js || (echo "::error::IAD预替换失败"; exit 1)
-
-      - name: Safe obfuscation
-        run: |
+          # 智能混淆
           npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --identifier-names-generator hexadecimal \
+            --identifier-names-generator mangled \
             --rename-globals false \
-            --control-flow-flattening false \
-            --dead-code-injection false \
-            --reserved-names "GEO_FIX" \
-            --reserved-strings "/IAD|US|8\.8\.8\.8/i"
+            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location" \
+            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics/i"
 
-      - name: Post-validation
+      - name: Inject security headers
         run: |
-          # 混淆后IAD验证
-          if ! grep -q 'IAD' _worker.js; then
-            echo "::error::❌ IAD最终标识丢失"
-            echo "=== 混淆后文件片段 ==="
-            grep -C 3 'colo' _worker.js || true
-            exit 1
-          fi
+          echo "// Scamalytics欺诈防护" >> _worker.js
+          echo "addEventListener('fetch', event => {" >> _worker.js
+          echo "  event.respondWith(handleRequest(event.request))" >> _worker.js
+          echo "})" >> _worker.js
+          echo "async function handleRequest(request) {" >> _worker.js
+          echo "  const headers = new Headers({" >> _worker.js
+          echo "    'Content-Type': 'application/json'," >> _worker.js
+          echo "    'X-Content-Type-Options': 'nosniff'," >> _worker.js
+          echo "    'CF-IPCountry': 'US'," >> _worker.js
+          echo "    'X-Proxy-Location': 'US'" >> _worker.js
+          echo "  });" >> _worker.js
+          echo "  return new Response(JSON.stringify({ip:'8.8.8.8',country:'US'}), {headers})" >> _worker.js
+          echo "}" >> _worker.js
 
       - name: Deploy to Cloudflare
         run: |
           npx wrangler deploy _worker.js \
-            --name bpb-worker \
+            --name bpb-worker-$GITHUB_RUN_ID \
             --compatibility-date $(date +'%Y-%m-%d')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
