@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  CI: true  # 关键修复：声明CI环境
+  CI: true
 
 jobs:
   deploy:
@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: "20.x"
 
-      - name: Install Wrangler v4
+      - name: Install Wrangler
         run: npm install -g wrangler@4.6.0
 
       - name: Build worker
@@ -40,10 +40,10 @@ jobs:
           name = "bpb-worker"
           main = "_worker.js"
           compatibility_date = "$(date +'%Y-%m-%d')"
-          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
           EOF
 
-      - name: Deploy with CI mode
+      - name: Deploy Worker
         run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
