@@ -1,4 +1,4 @@
-name: Cloudflare Worker Final Fix
+name: Cloudflare Worker Ultimate Deploy
 
 on:
   push:
@@ -31,11 +31,14 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Deploy with Auth
+      - name: Validate environment
         run: |
-          wrangler deploy _worker.js \
-            --name bpb-worker \
-            --compatibility-date $(date +'%Y-%m-%d')
+          echo "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != null }}"
+          echo "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != null }}"
+          wrangler --version
+
+      - name: Deploy to Cloudflare
+        run: wrangler deploy _worker.js --name bpb-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
