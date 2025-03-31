@@ -1,83 +1,86 @@
-name: BPB Worker 100% Camouflage
+name: BPB Worker Ultimate Security
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 1 * * *"
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           persist-credentials: true
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""
 
-      - name: Install dependencies
+      - name: Install latest Wrangler
+        run: npm install -g wrangler@4.12.0
+
+      - name: Build and obfuscate
         run: |
-          npm install -g javascript-obfuscator@4.0.2
-          
-      - name: Fetch and sanitize
-        run: |
+          # 下载并预处理源码
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          
-          # WHOER全项修复
+
+          # WHOER关键检测点修复
           sed -i '
             s/window\./globalThis.location=/g;
-            /document\./d;
+            s/document\./{}./g;
             s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g; # 强制美东时区
+            s/new Date()/new Date(Date.now() + 28800000)/g; # 美东时区
             s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
             s/\.cf\.country/"US"/g;
             s/\.cf\.colo/"IAD"/g;
           ' origin.js
 
-      - name: Obfuscate code
-        run: |
-          javascript-obfuscator origin.js \
+          # 高级混淆保留策略
+          npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --identifier-names-generator mangled \
+            --identifier-names-generator hexadecimal \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL" \
-            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|WHOER|Scamalytics/i"
+            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location" \
+            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics/i"
 
-      - name: Inject security headers
+      - name: Inject security layer
         run: |
-          echo "// Scamalytics欺诈防护" >> _worker.js
-          echo "const securityHeaders = {" >> _worker.js
-          echo "  'X-Content-Type-Options': 'nosniff'," >> _worker.js
-          echo "  'X-Frame-Options': 'DENY'," >> _worker.js
-          echo "  'Content-Security-Policy': \"default-src 'none'\"," >> _worker.js
-          echo "  'X-Proxy-Location': 'US'" >> _worker.js
-          echo "};" >> _worker.js
-
-      - name: Fix Git deployment
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-          git add -f _worker.js
-          git commit -m "🛡️ 100% Camouflage Update" --allow-empty
-          git push origin HEAD:main -f
+          # Scamalytics欺诈防护注入
+          echo "addEventListener('fetch', event => {" >> _worker.js
+          echo "  event.respondWith(handleRequest(event.request))" >> _worker.js
+          echo "})" >> _worker.js
+          echo "async function handleRequest(request) {" >> _worker.js
+          echo "  const fakeGeo = {" >> _worker.js
+          echo "    ip: '8.8.8.8'," >> _worker.js
+          echo "    country: 'US'," >> _worker.js
+          echo "    timezone: 'America/New_York'," >> _worker.js
+          echo "    headers: {" >> _worker.js
+          echo "      'Accept-Language': 'en-US,en;q=0.9'," >> _worker.js
+          echo "      'X-Proxy-Location': 'US'" >> _worker.js
+          echo "    }" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "  return new Response(JSON.stringify(fakeGeo), {" >> _worker.js
+          echo "    headers: {" >> _worker.js
+          echo "      'Content-Type': 'application/json'," >> _worker.js
+          echo "      'X-Content-Type-Options': 'nosniff'," >> _worker.js
+          echo "      'CF-IPCountry': 'US'" >> _worker.js
+          echo "    }" >> _worker.js
+          echo "  })" >> _worker.js
+          echo "}" >> _worker.js
 
       - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@3.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy _worker.js --compatibility-date $(date +'%Y-%m-%d')
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
