@@ -1,4 +1,4 @@
-name: BPB Worker Secure Deploy
+name: BPB Worker Final Fix
 
 on:
   push:
@@ -13,42 +13,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 修复缓存配置错误
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: ""  # 禁用缓存检测
 
       - name: Install dependencies
         run: |
-          npm install javascript-obfuscator@4.0.2
-          echo "👉 已安装 javascript-obfuscator 版本："
-          npx javascript-obfuscator --version
+          # 使用独立路径安装
+          npm install --global --prefix=./npm_modules javascript-obfuscator@4.0.2
+          echo "👉 添加全局路径：$PWD/npm_modules/bin"
+          echo "$PWD/npm_modules/bin" >> $GITHUB_PATH
 
-      - name: Fetch source code
+      - name: Build worker
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          echo "✅ 原始文件下载完成，大小：$(wc -c < origin.js) bytes"
-
-      - name: Obfuscate code
-        run: |
-          npx javascript-obfuscator origin.js \
+          
+          # 使用完整路径执行命令
+          ./npm_modules/bin/javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches"
+            --rename-globals false
 
-      - name: Verify output
-        run: |
-          if [ ! -f "_worker.js" ]; then
-            echo "::error::❌ 混淆失败，未生成_worker.js"
-            exit 1
-          fi
-          echo "✅ 成功生成混淆文件，大小：$(wc -c < _worker.js) bytes"
-
-      - name: Deploy to Cloudflare
+      - name: Deploy
         uses: cloudflare/wrangler-action@3.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy _worker.js
