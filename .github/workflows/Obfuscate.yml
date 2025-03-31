@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 7
+    timeout-minutes: 8
 
     steps:
       - name: Checkout code
@@ -21,62 +21,64 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (修复缓存错误)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: ""  # 禁用缓存检测
 
       - name: Install dependencies
         run: |
-          npm install -g javascript-obfuscator@4.0.2
-          npm install geolite2-redist@3.0.0 --no-package-lock
+          npm install --global --prefix=./npm_modules \
+            javascript-obfuscator@4.0.2 \
+            geolite2-redist@3.0.0
 
       - name: Fetch and sanitize
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # WHOER检测关键修复
+          # 强化环境兼容处理
           sed -i '
-            s/window\./globalThis.location=/g;
-            s/document\./{}./g;
-            s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome/";
-            s/new Date()/new Date(new Date().toLocaleString("en-US", {timeZone: "America\/New_York"}))/g;
-            s/\.headers\.get("Accept-Language")/"[en-US,en;q=0.9]"/g;
+            s/window\./globalThis./g;
+            /document\./d;
+            s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
+            s/new Date()/new Date(Date.now() + 28800000)/g;  # +8时区
+            s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
+            s/\.cf\.country/"US"/g;
           ' origin.js
 
-      - name: Advanced obfuscation
+      - name: Obfuscate code (WHOER优化)
         run: |
-          javascript-obfuscator origin.js \
+          ./npm_modules/bin/javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --control-flow-flattening false \
-            --dead-code-injection false \
-            --identifier-names-generator hexadecimal \
+            --identifier-names-generator mangled \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,Headers,URL,Date,location" \
-            --reserved-strings "/Mozilla|Chrome|Safari|Gecko/" \
-            --transform-object-keys false \
-            --disable-console-output true
+            --reserved-names "fetch,addEventListener,Response,Request,Headers,URL,caches,Date" \
+            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|WHOER|Scamalytics/i"
 
-      - name: GeoIP injection
+      - name: Inject geo data
         run: |
-          echo "// WHOER伪装核心模块" >> _worker.js
-          echo "const geoRedirect = (request) => {" >> _worker.js
-          echo "  const cf = request.cf || {};" >> _worker.js
-          echo "  return new Response(JSON.stringify({" >> _worker.js
-          echo "    ip: cf.colo || '8.8.8.8'," >> _worker.js
+          echo "// Scamalytics欺诈防护" >> _worker.js
+          echo "addEventListener('fetch', event => {" >> _worker.js
+          echo "  event.respondWith(handleRequest(event.request))" >> _worker.js
+          echo "})" >> _worker.js
+          echo "async function handleRequest(request) {" >> _worker.js
+          echo "  const cf = {" >> _worker.js
+          echo "    colo: 'IAD'," >> _worker.js
           echo "    country: 'US'," >> _worker.js
-          echo "    timezone: 'America/New_York'," >> _worker.js
-          echo "    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'" >> _worker.js
-          echo "  }), { headers: { 'Content-Type': 'application/json' } });" >> _worker.js
-          echo "};" >> _worker.js
+          echo "    timezone: 'America/New_York'" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "  return new Response(JSON.stringify(cf), {" >> _worker.js
+          echo "    headers: { 'Content-Type': 'application/json' }" >> _worker.js
+          echo "  })" >> _worker.js
+          echo "}" >> _worker.js
 
-      - name: Auto commit
+      - name: Commit and push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f _worker.js
-          git commit -m "🌍 Geo camouflage updated" --allow-empty
+          git commit -m "🛡️ 欺诈评分0优化" --allow-empty
           git push origin main -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
