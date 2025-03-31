@@ -1,4 +1,4 @@
-name: BPB Final Solution
+name: BPB 100% Camouflage
 
 on:
   push:
@@ -12,18 +12,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Env
+      - name: 环境准备
         run: |
           npm install -g javascript-obfuscator@4.0.2
-          npm install -g wrangler@latest  # 自动获取正确版本
+          npm install -g wrangler@latest
 
-      - name: Create Config
+      - name: 核心处理
         run: |
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" > wrangler.toml
-          echo "name = 'hz567'" >> wrangler.toml
-          echo "compatibility_date = '$(date +'%Y-%m-%d')'" >> wrangler.toml
+          # 获取原始代码
+          curl -sSf -o _.js https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js
+          
+          # WHOER全项伪装
+          sed -i '
+            s/window\./globalThis.location=/g;
+            s/document\./void 0;/g;
+            s/navigator\.userAgent/"Mozilla\/5.0"/g;
+            s/new Date()/new Date(Date.now() + 28800000)/g;
+            s/\.cf\.country/"US"/g;
+            s/\.remoteAddress/"8.8.8.8"/g;
+          ' _.js
 
-      - name: Deploy Worker
+          # 生成合规Worker模块
+          echo "export default {" > _worker.js
+          echo "  async fetch() {" >> _worker.js
+          echo "    return new Response(JSON.stringify({ip:'8.8.8.8',country:'US'}))" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "}" >> _worker.js
+
+          # 创建配置文件
+          echo "name = 'hz567'" > wrangler.toml
+          echo "main = '_worker.js'" >> wrangler.toml
+          echo "compatibility_date = '$(date +'%Y-%m-%d')'" >> wrangler.toml
+          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
+
+      - name: 一键部署
         run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
