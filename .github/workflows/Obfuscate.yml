@@ -22,28 +22,32 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
+          cache: "npm"
 
-      - name: Install latest Wrangler
-        run: npm install -g wrangler@4.12.0
+      - name: Install dependencies
+        run: |
+          npm install wrangler@4.7.0
+          npm install javascript-obfuscator@4.0.2
 
       - name: Build and obfuscate
         run: |
-          # 下载并预处理源码
+          # 下载原始文件
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
 
-          # WHOER关键检测点修复
+          # WHOER全项修复
           sed -i '
             s/window\./globalThis.location=/g;
             s/document\./{}./g;
             s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g; # 美东时区
+            s/new Date()/new Date(Date.now() + 28800000)/g;
             s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
             s/\.cf\.country/"US"/g;
             s/\.cf\.colo/"IAD"/g;
+            s/\.remoteAddress/"8.8.8.8"/g;
           ' origin.js
 
-          # 高级混淆保留策略
+          # 智能混淆
           npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
@@ -52,35 +56,25 @@ jobs:
             --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location" \
             --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics/i"
 
-      - name: Inject security layer
+      - name: Inject geo protection
         run: |
-          # Scamalytics欺诈防护注入
-          echo "addEventListener('fetch', event => {" >> _worker.js
-          echo "  event.respondWith(handleRequest(event.request))" >> _worker.js
-          echo "})" >> _worker.js
-          echo "async function handleRequest(request) {" >> _worker.js
-          echo "  const fakeGeo = {" >> _worker.js
-          echo "    ip: '8.8.8.8'," >> _worker.js
-          echo "    country: 'US'," >> _worker.js
-          echo "    timezone: 'America/New_York'," >> _worker.js
-          echo "    headers: {" >> _worker.js
-          echo "      'Accept-Language': 'en-US,en;q=0.9'," >> _worker.js
-          echo "      'X-Proxy-Location': 'US'" >> _worker.js
-          echo "    }" >> _worker.js
+          echo "// WHOER 100%伪装核心" >> _worker.js
+          echo "const fakeResponse = {" >> _worker.js
+          echo "  ip: '8.8.8.8'," >> _worker.js
+          echo "  country: 'US'," >> _worker.js
+          echo "  timezone: 'America/New_York'," >> _worker.js
+          echo "  headers: {" >> _worker.js
+          echo "    'CF-IPCountry': 'US'," >> _worker.js
+          echo "    'X-Proxy-Location': 'US'," >> _worker.js
+          echo "    'Accept-Language': 'en-US,en;q=0.9'" >> _worker.js
           echo "  }" >> _worker.js
-          echo "  return new Response(JSON.stringify(fakeGeo), {" >> _worker.js
-          echo "    headers: {" >> _worker.js
-          echo "      'Content-Type': 'application/json'," >> _worker.js
-          echo "      'X-Content-Type-Options': 'nosniff'," >> _worker.js
-          echo "      'CF-IPCountry': 'US'" >> _worker.js
-          echo "    }" >> _worker.js
-          echo "  })" >> _worker.js
-          echo "}" >> _worker.js
+          echo "};" >> _worker.js
 
       - name: Deploy to Cloudflare
-        uses: cloudflare/wrangler-action@3.0.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: deploy _worker.js --compatibility-date $(date +'%Y-%m-%d')
+        run: |
+          npx wrangler@4.7.0 deploy _worker.js \
+            --name bpb-worker-$GITHUB_RUN_ID \
+            --compatibility-date $(date +'%Y-%m-%d')
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
