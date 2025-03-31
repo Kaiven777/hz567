@@ -1,4 +1,4 @@
-name: BPB Final Solution
+name: BPB Ultimate Solution
 
 on:
   push:
@@ -12,31 +12,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 强制安装最新工具链
+      - name: 环境初始化
         run: |
           npm install -g wrangler@latest --force
           npm cache clean --force
 
       - name: 生成部署文件
         run: |
-          # 创建配置文件（强制UTF-8编码）
-          echo "name = 'hz567'" > wrangler.toml
-          echo "main = '_worker.js'" >> wrangler.toml
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
-          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
+          # 创建配置文件 (强制LF换行)
+          printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
 
-          # 生成Worker代码（强制UNIX换行符）
-          echo -e "export default {\n  async fetch(request) {\n    return new Response(JSON.stringify({ip:'8.8.8.8',country:'US'}), {\n      headers: {'CF-IPCountry':'US'},\n      status: 200\n    })\n  }\n}" > _worker.js
+          # 生成Worker代码 (UNIX格式)
+          printf "export default {\n  async fetch(request, env) {\n    return new Response(\n      JSON.stringify({ip:'8.8.8.8',country:'US'}),\n      { headers: {'CF-IPCountry':'US', 'Content-Type':'application/json'} }\n    )\n  }\n}" > _worker.js
 
-          # 验证文件编码
-          file --mime-encoding _worker.js
-          dos2unix _worker.js
+          # 验证文件格式
+          echo "当前文件换行符："
+          file _worker.js
+          echo "文件内容检查："
+          cat -v _worker.js
 
-      - name: 显示文件结构
-        run: ls -la
-
-      - name: 执行部署
-        run: |
-          wrangler deploy --verbose
+      - name: 部署到CF
+        run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
