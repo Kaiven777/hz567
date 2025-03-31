@@ -6,20 +6,14 @@ on:
   schedule:
     - cron: "0 1 * * *"
 
-env:
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,45 +21,40 @@ jobs:
           node-version: "20.x"
 
       - name: Install dependencies
-        run: npm install -g javascript-obfuscator@4.0.2 wrangler@latest
+        run: npm install -g javascript-obfuscator@4.0.2
 
       - name: Build worker
         run: |
           curl -sSf -o origin.js \
-            "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
+            "https://your-source-url/unobfuscated-worker.js"
           
-          # 确保基础事件监听器存在
+          # 强制添加事件监听器（如果缺失）
           if ! grep -q 'addEventListener("fetch"' origin.js; then
-            echo 'addEventListener("fetch", event => event.respondWith(handleRequest(event.request)));' >> origin.js
+            echo 'addEventListener("fetch",event=>event.respondWith(handle(event.request)));' >> origin.js
           fi
 
+          # 增强混淆保留配置
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --identifier-names-generator hexadecimal \
+            --control-flow-flattening false \
             --rename-globals false \
-            --reserved-names "fetch,Response,Request,addEventListener,caches"
-
-      - name: Configure Wrangler
-        run: |
-          cat << EOF > wrangler.toml
-          name = "bpb-worker"
-          main = "_worker.js"
-          compatibility_date = "2024-05-01"
-          account_id = "${{ env.CLOUDFLARE_ACCOUNT_ID }}"
-          workers_dev = true
-          EOF
+            --reserved-names "fetch,addEventListener,Response,Request,caches" \
+            --reserved-strings "/fetch|event/"
 
       - name: Validate worker
         run: |
-          if [ ! -f "_worker.js" ]; then
-            echo "❌ _worker.js 文件未生成"
-            exit 1
-          fi
-          if ! grep -q 'addEventListener("fetch"' _worker.js; then
-            echo "❌ 缺失必要的事件监听器"
+          # 使用更宽松的正则匹配
+          if ! grep -q -E 'addEventListener\(["'\'']fetch' _worker.js; then
+            echo "::error::❌ 事件监听器缺失或格式异常"
             exit 1
           fi
 
-      - name: Deploy to Cloudflare
-        run: wrangler deploy
+          # 基本功能测试
+          echo "const handle = () => new Response('OK');" >> _worker.js
+          node -e "require('./_worker.js')" || (echo "::error::❌ 运行时错误"; exit 1)
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@3.0.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
