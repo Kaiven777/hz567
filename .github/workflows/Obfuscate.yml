@@ -1,11 +1,11 @@
-name: Cloudflare Worker Ultimate Deploy
+name: BPB Worker Secure Deploy
 
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -17,31 +17,38 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
+          cache: "npm"
 
-      - name: Install latest Wrangler
-        run: npm install -g wrangler@4.6.0
+      - name: Install dependencies
+        run: |
+          npm install javascript-obfuscator@4.0.2
+          echo "👉 已安装 javascript-obfuscator 版本："
+          npx javascript-obfuscator --version
 
-      - name: Build worker
+      - name: Fetch source code
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          
-          javascript-obfuscator origin.js \
+          echo "✅ 原始文件下载完成，大小：$(wc -c < origin.js) bytes"
+
+      - name: Obfuscate code
+        run: |
+          npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request"
+            --reserved-names "fetch,addEventListener,Response,Request,caches"
 
-      - name: Configure Wrangler
+      - name: Verify output
         run: |
-          cat << EOF > wrangler.toml
-          name = "bpb-worker"
-          main = "_worker.js"
-          compatibility_date = "2024-05-01"
-          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
-          EOF
+          if [ ! -f "_worker.js" ]; then
+            echo "::error::❌ 混淆失败，未生成_worker.js"
+            exit 1
+          fi
+          echo "✅ 成功生成混淆文件，大小：$(wc -c < _worker.js) bytes"
 
-      - name: Deploy with force
-        run: wrangler deploy _worker.js --yes
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@3.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy _worker.js
