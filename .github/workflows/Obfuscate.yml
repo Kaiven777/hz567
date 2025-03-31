@@ -1,4 +1,4 @@
-name: BPB Worker Final Fix
+name: BPB Worker Ultimate Fix
 
 on:
   push:
@@ -18,60 +18,57 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Setup Node.js
+      - name: Setup Node.js (缓存问题修复)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: ""  # 关键修复：禁用缓存检测
+
+      - name: Initialize project
+        run: |
+          npm init -y --silent
+          echo "package-lock=false" >> .npmrc
 
       - name: Install dependencies
         run: |
-          npm install javascript-obfuscator@4.0.2
-          npm install wrangler@4.12.0
+          npm install --no-package-lock \
+            javascript-obfuscator@4.0.2 \
+            wrangler@latest
 
-      - name: Secure source processing
+      - name: Build worker (安全模式)
         run: |
-          # 步骤1：安全下载原始文件
-          curl -sSf -o raw.js \
+          curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 步骤2：语法安全替换（新方案）
+          # 安全环境变量替换
           sed -i.bak '
-            # 浏览器环境模拟（不含破坏性修改）
-            s/window\./globalThis.location=/g;
-            s/document\./void 0;/g;
-            s/navigator\.userAgent/"Mozilla\\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\\/537.36"/g;
-            
-            # 地理信息加固（显式声明方式）
-            s/$request\|event$\.cf\.country/"US"/g;
-            s/$request\|event$\.cf\.colo/"IAD"/g;
-            s/$\w\+$\.remoteAddress/"8.8.8.8"/g;
-            
-            # 时区校正（ISO标准格式）
-            s/new Date()/new Date(Date.now() + 28800000).toISOString()/g;
-          ' raw.js
+            s/window\./globalThis./g;
+            s/document\./{};/g;
+            s/new Date()/new Date(Date.now() + 28800000)/g;
+            s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
+            s/\.cf\.country/"US"/g;
+            s/\.cf\.colo/"IAD"/g;
+          ' origin.js
 
-          # 步骤3：语法校验（关键修复）
-          node -c raw.js || (echo "::error::Source syntax error"; exit 1)
+          # 语法预校验
+          node -c origin.js || (echo "::error::预处理文件语法错误"; exit 1)
 
-      - name: Safe obfuscation
+      - name: Obfuscation process
         run: |
-          # 防御性混淆配置（新参数）
-          npx javascript-obfuscator raw.js \
+          npx javascript-obfuscator origin.js \
             --output _worker.js \
-            --compact false \
-            --identifier-names-generator dictionary \
-            --identifiers-prefix 'bpb_' \
+            --compact true \
+            --identifier-names-generator mangled \
             --rename-globals false \
-            --control-flow-flattening false \
-            --dead-code-injection false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location" \
-            --reserved-strings "/(US|IAD|8\.8\.8\.8|en-US)/i"
+            --reserved-names "fetch,addEventListener,Response,Request,caches" \
+            --disable-console-output true
 
-          # 混淆后语法验证
-          node -c _worker.js || (echo "::error::Obfuscated code error"; exit 1)
+      - name: Final check
+        run: |
+          node -c _worker.js
+          grep -q 'US' _worker.js || (echo "::error::地理伪装丢失"; exit 1)
 
-      - name: Final deployment
+      - name: Deploy to Cloudflare
         run: |
           npx wrangler deploy _worker.js \
             --name bpb-worker \
