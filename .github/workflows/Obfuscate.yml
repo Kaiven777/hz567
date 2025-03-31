@@ -1,4 +1,4 @@
-name: BPB Worker Ultimate Camouflage
+name: BPB Worker 100% Camouflage
 
 on:
   push:
@@ -21,64 +21,63 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Setup Node.js (修复缓存错误)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""  # 禁用缓存检测
+          cache: ""
 
       - name: Install dependencies
         run: |
-          npm install --global --prefix=./npm_modules \
-            javascript-obfuscator@4.0.2 \
-            geolite2-redist@3.0.0
-
+          npm install -g javascript-obfuscator@4.0.2
+          
       - name: Fetch and sanitize
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 强化环境兼容处理
+          # WHOER全项修复
           sed -i '
-            s/window\./globalThis./g;
+            s/window\./globalThis.location=/g;
             /document\./d;
             s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g;  # +8时区
+            s/new Date()/new Date(Date.now() + 28800000)/g; # 强制美东时区
             s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
             s/\.cf\.country/"US"/g;
+            s/\.cf\.colo/"IAD"/g;
           ' origin.js
 
-      - name: Obfuscate code (WHOER优化)
+      - name: Obfuscate code
         run: |
-          ./npm_modules/bin/javascript-obfuscator origin.js \
+          javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
             --identifier-names-generator mangled \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,Headers,URL,caches,Date" \
+            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL" \
             --reserved-strings "/Mozilla|Chrome|Safari|Gecko|WHOER|Scamalytics/i"
 
-      - name: Inject geo data
+      - name: Inject security headers
         run: |
           echo "// Scamalytics欺诈防护" >> _worker.js
-          echo "addEventListener('fetch', event => {" >> _worker.js
-          echo "  event.respondWith(handleRequest(event.request))" >> _worker.js
-          echo "})" >> _worker.js
-          echo "async function handleRequest(request) {" >> _worker.js
-          echo "  const cf = {" >> _worker.js
-          echo "    colo: 'IAD'," >> _worker.js
-          echo "    country: 'US'," >> _worker.js
-          echo "    timezone: 'America/New_York'" >> _worker.js
-          echo "  }" >> _worker.js
-          echo "  return new Response(JSON.stringify(cf), {" >> _worker.js
-          echo "    headers: { 'Content-Type': 'application/json' }" >> _worker.js
-          echo "  })" >> _worker.js
-          echo "}" >> _worker.js
+          echo "const securityHeaders = {" >> _worker.js
+          echo "  'X-Content-Type-Options': 'nosniff'," >> _worker.js
+          echo "  'X-Frame-Options': 'DENY'," >> _worker.js
+          echo "  'Content-Security-Policy': \"default-src 'none'\"," >> _worker.js
+          echo "  'X-Proxy-Location': 'US'" >> _worker.js
+          echo "};" >> _worker.js
 
-      - name: Commit and push
+      - name: Fix Git deployment
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git add -f _worker.js
-          git commit -m "🛡️ 欺诈评分0优化" --allow-empty
-          git push origin main -f https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git commit -m "🛡️ 100% Camouflage Update" --allow-empty
+          git push origin HEAD:main -f
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@3.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy _worker.js --compatibility-date $(date +'%Y-%m-%d')
