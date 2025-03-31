@@ -1,4 +1,4 @@
-name: Cloudflare Worker 100% Fix
+name: Cloudflare Worker Final Fix
 
 on:
   push:
@@ -31,26 +31,27 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Validate credentials
+      - name: Validate Secrets
         run: |
-          # 验证密钥有效性
-          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
-            echo "::error::❌ CLOUDFLARE_API_TOKEN未设置"
+          # 强制检查密钥存在性
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::❌ 必须设置 CLOUDFLARE_API_TOKEN 密钥"
             exit 1
           fi
           
-          # 验证账户ID格式
-          if [[ ! "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" =~ ^[a-f0-9]{32}$ ]]; then
-            echo "::error::❌ 账户ID格式错误"
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::❌ 必须设置 CLOUDFLARE_ACCOUNT_ID 密钥"
             exit 1
           fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Deploy with Auth
+      - name: Deploy to Cloudflare
         run: |
           wrangler deploy _worker.js \
-            --name bpb-worker-$GITHUB_RUN_ID \
-            --compatibility-date $(date +'%Y-%m-%d') \
-            --account-id $CF_ACCOUNT_ID
+            --name bpb-worker \
+            --compatibility-date $(date +'%Y-%m-%d')
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
