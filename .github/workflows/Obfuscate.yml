@@ -1,10 +1,8 @@
-name: BPB Worker Final Fix
+name: Cloudflare Worker Ultimate Deploy
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 1 * * *"
 
 jobs:
   deploy:
@@ -20,39 +18,30 @@ jobs:
         with:
           node-version: "20.x"
 
-      - name: Install dependencies
-        run: npm install -g javascript-obfuscator@4.0.2
+      - name: Install latest Wrangler
+        run: npm install -g wrangler@4.6.0
 
       - name: Build worker
         run: |
-          # 使用实际有效的源文件URL
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 强制添加事件监听器
-          if ! grep -q 'addEventListener("fetch"' origin.js; then
-            echo 'addEventListener("fetch",event=>event.respondWith(handle(event.request)));' >> origin.js
-          fi
-
-          # 执行混淆操作
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches"
+            --reserved-names "fetch,addEventListener,Response,Request"
 
-      - name: Validate deployment
+      - name: Configure Wrangler
         run: |
-          if [ ! -f "_worker.js" ]; then
-            echo "::error::❌ 文件生成失败"
-            exit 1
-          fi
-          if ! grep -q 'respondWith' _worker.js; then
-            echo "::error::❌ 事件监听器丢失"
-            exit 1
-          fi
+          cat << EOF > wrangler.toml
+          name = "bpb-worker"
+          main = "_worker.js"
+          compatibility_date = "2024-05-01"
+          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          EOF
 
-      - name: Deploy to Cloudflare
-        uses: cloudflare/wrangler-action@3.0.0
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
+      - name: Deploy with force
+        run: wrangler deploy _worker.js --yes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
