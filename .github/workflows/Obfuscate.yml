@@ -1,11 +1,15 @@
-name: BPB Worker Final Fix
+name: Cloudflare Worker Final Deploy
 
 on:
   push:
     branches: [main]
 
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -13,32 +17,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 修复缓存配置错误
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""  # 禁用缓存检测
 
-      - name: Install dependencies
-        run: |
-          # 使用独立路径安装
-          npm install --global --prefix=./npm_modules javascript-obfuscator@4.0.2
-          echo "👉 添加全局路径：$PWD/npm_modules/bin"
-          echo "$PWD/npm_modules/bin" >> $GITHUB_PATH
+      - name: Install Wrangler v4
+        run: npm install -g wrangler@4.6.0
 
       - name: Build worker
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 使用完整路径执行命令
-          ./npm_modules/bin/javascript-obfuscator origin.js \
+          npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
             --rename-globals false
 
-      - name: Deploy
-        uses: cloudflare/wrangler-action@3.0.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Configure Wrangler
+        run: |
+          cat << EOF > wrangler.toml
+          name = "bpb-worker"
+          main = "_worker.js"
+          compatibility_date = "2024-05-01"
+          account_id = "$CLOUDFLARE_ACCOUNT_ID"
+          EOF
+
+      - name: Force Deploy
+        run: wrangler deploy _worker.js --yes
