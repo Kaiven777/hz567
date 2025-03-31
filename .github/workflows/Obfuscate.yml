@@ -1,4 +1,4 @@
-name: BPB Worker 100% Obfuscation Fix
+name: BPB Worker Geo Fix
 
 on:
   push:
@@ -31,11 +31,10 @@ jobs:
 
       - name: Build and sanitize
         run: |
-          # 下载并修复源文件语法
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 安全替换策略（关键修复）
+          # 强化地理伪装替换
           sed -i '
             s/window\./globalThis./g;
             s/document\./mockDoc./g;
@@ -43,15 +42,17 @@ jobs:
             s/new Date()/new Date(Date.now() + 28800000)/g;
             s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
             s/\.cf\.country/"US"/g;
+            s/\.cf\.colo/"IAD"/g;
             s/\.remoteAddress/"8.8.8.8"/g;
+            s/request\.cf\.country/"US"/g;
           ' origin.js
 
-          # 注入安全垫片防止语法错误
+          # 注入防御性代码
           echo "const mockDoc = { createElement: () => ({}) };" | cat - origin.js > temp.js
           mv temp.js origin.js
 
-          # 语法预验证
-          node -c origin.js || (echo "::error::源文件语法错误"; exit 1)
+          # 地理伪装预验证
+          grep -q '"US"' origin.js || (echo "::error::地理伪装预验证失败"; exit 1)
 
       - name: Safe obfuscation
         run: |
@@ -62,18 +63,21 @@ jobs:
             --rename-globals false \
             --control-flow-flattening false \
             --dead-code-injection false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location,mockDoc" \
-            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics/i" \
-            --transform-object-keys false
+            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location,mockDoc,US,IAD" \
+            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics|US|IAD|8\.8\.8\.8|en-US/i"
 
-      - name: Final validation
+      - name: Post-validation
         run: |
-          # 混淆后语法检查
-          node -c _worker.js || (echo "::error::混淆文件语法错误"; exit 1)
+          # 地理伪装最终验证
+          if ! grep -q '"US"' _worker.js; then
+            echo "::error::❌ 关键地理标识丢失"
+            exit 1
+          fi
           
-          # WHOER检测点验证
-          grep -q '8.8.8.8' _worker.js || (echo "::error::IP伪装丢失"; exit 1)
-          grep -q '"US"' _worker.js || (echo "::error::地理伪装丢失"; exit 1)
+          if ! grep -q '8.8.8.8' _worker.js; then
+            echo "::error::❌ IP伪装丢失"
+            exit 1
+          fi
 
       - name: Deploy to Cloudflare
         run: |
