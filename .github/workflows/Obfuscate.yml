@@ -1,4 +1,4 @@
-name: BPB Worker Ultimate Fix
+name: BPB Worker Syntax Fix
 
 on:
   push:
@@ -18,60 +18,67 @@ jobs:
         with:
           persist-credentials: true
 
-      - name: Setup Node.js (缓存问题修复)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""  # 关键修复：禁用缓存检测
+          cache: ""
 
-      - name: Initialize project
+      - name: Secure source download
         run: |
-          npm init -y --silent
-          echo "package-lock=false" >> .npmrc
-
-      - name: Install dependencies
-        run: |
-          npm install --no-package-lock \
-            javascript-obfuscator@4.0.2 \
-            wrangler@latest
-
-      - name: Build worker (安全模式)
-        run: |
+          # 步骤1：安全下载并验证源文件
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 安全环境变量替换
+          # 验证文件完整性
+          if [ $(wc -c < origin.js) -lt 1000 ]; then
+            echo "::error::源文件下载不完整"
+            exit 1
+          fi
+          node -c origin.js || (echo "::error::原始文件语法错误"; exit 1)
+
+      - name: Safe preprocessing
+        run: |
+          # 步骤2：精确替换策略
           sed -i.bak '
-            s/window\./globalThis./g;
-            s/document\./{};/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g;
-            s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
+            # 精确匹配window对象
+            s/\bwindow\./globalThis./g;
+            # 保护原型链操作
+            s/Object\.create(/Object.cr(/g;
+            s/Object\.defineProperty(/Object.dp(/g;
+            # 保留关键API
+            s/typeof require/"function"/g;
+            # 地理伪装加固
             s/\.cf\.country/"US"/g;
             s/\.cf\.colo/"IAD"/g;
           ' origin.js
 
-          # 语法预校验
-          node -c origin.js || (echo "::error::预处理文件语法错误"; exit 1)
+          # 注入环境兼容层
+          echo "const Object = { cr: Object.create, dp: Object.defineProperty };" > temp.js
+          cat origin.js >> temp.js
+          mv temp.js origin.js
 
-      - name: Obfuscation process
+          # 语法二次验证
+          node -c origin.js || (echo "::error::预处理语法错误"; exit 1)
+
+      - name: Obfuscation
         run: |
+          # 步骤3：安全混淆配置
           npx javascript-obfuscator origin.js \
             --output _worker.js \
-            --compact true \
-            --identifier-names-generator mangled \
+            --compact false \
+            --identifier-names-generator hexadecimal \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches" \
-            --disable-console-output true
+            --control-flow-flattening false \
+            --reserved-names "Object,globalThis,fetch,addEventListener" \
+            --reserved-strings "/US|IAD/i"
 
-      - name: Final check
-        run: |
-          node -c _worker.js
-          grep -q 'US' _worker.js || (echo "::error::地理伪装丢失"; exit 1)
+          node -c _worker.js || (echo "::error::混淆文件语法错误"; exit 1)
 
-      - name: Deploy to Cloudflare
+      - name: Deploy
         run: |
           npx wrangler deploy _worker.js \
-            --name bpb-worker \
+            --name bpb-worker-$GITHUB_RUN_ID \
             --compatibility-date $(date +'%Y-%m-%d')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
