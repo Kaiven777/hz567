@@ -1,84 +1,41 @@
-name: BPB Worker Syntax Fix
+name: BPB Worker Final Deployment
 
 on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
+
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "::error::❌ 请前往仓库 Settings > Secrets > Actions 添加 CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+          if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
+            echo "::error::❌ 请前往仓库 Settings > Secrets > Actions 添加 CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: ""
 
-      - name: Secure source download
+      - name: Install Wrangler
+        run: npm install -g wrangler@4.6.0
+
+      - name: Deploy to Cloudflare
         run: |
-          # 步骤1：安全下载并验证源文件
-          curl -sSf -o origin.js \
-            "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          
-          # 验证文件完整性
-          if [ $(wc -c < origin.js) -lt 1000 ]; then
-            echo "::error::源文件下载不完整"
-            exit 1
-          fi
-          node -c origin.js || (echo "::error::原始文件语法错误"; exit 1)
-
-      - name: Safe preprocessing
-        run: |
-          # 步骤2：精确替换策略
-          sed -i.bak '
-            # 精确匹配window对象
-            s/\bwindow\./globalThis./g;
-            # 保护原型链操作
-            s/Object\.create(/Object.cr(/g;
-            s/Object\.defineProperty(/Object.dp(/g;
-            # 保留关键API
-            s/typeof require/"function"/g;
-            # 地理伪装加固
-            s/\.cf\.country/"US"/g;
-            s/\.cf\.colo/"IAD"/g;
-          ' origin.js
-
-          # 注入环境兼容层
-          echo "const Object = { cr: Object.create, dp: Object.defineProperty };" > temp.js
-          cat origin.js >> temp.js
-          mv temp.js origin.js
-
-          # 语法二次验证
-          node -c origin.js || (echo "::error::预处理语法错误"; exit 1)
-
-      - name: Obfuscation
-        run: |
-          # 步骤3：安全混淆配置
-          npx javascript-obfuscator origin.js \
-            --output _worker.js \
-            --compact false \
-            --identifier-names-generator hexadecimal \
-            --rename-globals false \
-            --control-flow-flattening false \
-            --reserved-names "Object,globalThis,fetch,addEventListener" \
-            --reserved-strings "/US|IAD/i"
-
-          node -c _worker.js || (echo "::error::混淆文件语法错误"; exit 1)
-
-      - name: Deploy
-        run: |
-          npx wrangler deploy _worker.js \
-            --name bpb-worker-$GITHUB_RUN_ID \
+          wrangler deploy _worker.js \
+            --name bpb-worker \
             --compatibility-date $(date +'%Y-%m-%d')
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
