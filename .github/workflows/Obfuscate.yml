@@ -1,4 +1,4 @@
-name: Cloudflare Worker Ultimate Deploy
+name: Cloudflare Worker 100% Fix
 
 on:
   push:
@@ -31,14 +31,26 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Validate environment
+      - name: Validate credentials
         run: |
-          echo "CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != null }}"
-          echo "CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != null }}"
-          wrangler --version
+          # 验证密钥有效性
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "::error::❌ CLOUDFLARE_API_TOKEN未设置"
+            exit 1
+          fi
+          
+          # 验证账户ID格式
+          if [[ ! "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" =~ ^[a-f0-9]{32}$ ]]; then
+            echo "::error::❌ 账户ID格式错误"
+            exit 1
+          fi
 
-      - name: Deploy to Cloudflare
-        run: wrangler deploy _worker.js --name bpb-worker
+      - name: Deploy with Auth
+        run: |
+          wrangler deploy _worker.js \
+            --name bpb-worker-$GITHUB_RUN_ID \
+            --compatibility-date $(date +'%Y-%m-%d') \
+            --account-id $CF_ACCOUNT_ID
         env:
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
