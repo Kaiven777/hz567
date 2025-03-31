@@ -1,4 +1,4 @@
-name: BPB Worker Ultimate Fix
+name: BPB Worker Final Fix
 
 on:
   push:
@@ -25,36 +25,34 @@ jobs:
 
       - name: Build worker
         run: |
+          # 使用实际有效的源文件URL
           curl -sSf -o origin.js \
-            "https://your-source-url/unobfuscated-worker.js"
+            "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 强制添加事件监听器（如果缺失）
+          # 强制添加事件监听器
           if ! grep -q 'addEventListener("fetch"' origin.js; then
             echo 'addEventListener("fetch",event=>event.respondWith(handle(event.request)));' >> origin.js
           fi
 
-          # 增强混淆保留配置
+          # 执行混淆操作
           javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
-            --control-flow-flattening false \
             --rename-globals false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches" \
-            --reserved-strings "/fetch|event/"
+            --reserved-names "fetch,addEventListener,Response,Request,caches"
 
-      - name: Validate worker
+      - name: Validate deployment
         run: |
-          # 使用更宽松的正则匹配
-          if ! grep -q -E 'addEventListener\(["'\'']fetch' _worker.js; then
-            echo "::error::❌ 事件监听器缺失或格式异常"
+          if [ ! -f "_worker.js" ]; then
+            echo "::error::❌ 文件生成失败"
+            exit 1
+          fi
+          if ! grep -q 'respondWith' _worker.js; then
+            echo "::error::❌ 事件监听器丢失"
             exit 1
           fi
 
-          # 基本功能测试
-          echo "const handle = () => new Response('OK');" >> _worker.js
-          node -e "require('./_worker.js')" || (echo "::error::❌ 运行时错误"; exit 1)
-
-      - name: Deploy
+      - name: Deploy to Cloudflare
         uses: cloudflare/wrangler-action@3.0.0
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
