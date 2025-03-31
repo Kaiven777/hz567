@@ -1,4 +1,4 @@
-name: BPB Worker Ultimate Security
+name: BPB Worker Ultimate Fix
 
 on:
   push:
@@ -8,46 +8,46 @@ permissions:
   contents: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           persist-credentials: true
+          fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js (修复缓存错误)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: ""  # 禁用缓存检测
 
-      - name: Install dependencies
+      - name: Install verified dependencies
         run: |
-          npm install wrangler@4.7.0
-          npm install javascript-obfuscator@4.0.2
+          npm install -g javascript-obfuscator@4.0.2
+          npm install wrangler@4.7.0 --no-package-lock
 
-      - name: Build and obfuscate
+      - name: Build worker
         run: |
-          # 下载原始文件
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-
-          # WHOER全项修复
+          
+          # WHOER检测点修复
           sed -i '
             s/window\./globalThis.location=/g;
             s/document\./{}./g;
             s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g;
+            s/new Date()/new Date(Date.now() + 28800000)/g; # 美东时区
             s/\.headers\.get("Accept-Language")/"en-US,en;q=0.9"/g;
             s/\.cf\.country/"US"/g;
             s/\.cf\.colo/"IAD"/g;
             s/\.remoteAddress/"8.8.8.8"/g;
           ' origin.js
 
-          # 智能混淆
+          # 增强混淆
           npx javascript-obfuscator origin.js \
             --output _worker.js \
             --compact true \
@@ -56,18 +56,15 @@ jobs:
             --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location" \
             --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics/i"
 
-      - name: Inject geo protection
+      - name: Inject security layer
         run: |
-          echo "// WHOER 100%伪装核心" >> _worker.js
-          echo "const fakeResponse = {" >> _worker.js
-          echo "  ip: '8.8.8.8'," >> _worker.js
-          echo "  country: 'US'," >> _worker.js
-          echo "  timezone: 'America/New_York'," >> _worker.js
-          echo "  headers: {" >> _worker.js
-          echo "    'CF-IPCountry': 'US'," >> _worker.js
-          echo "    'X-Proxy-Location': 'US'," >> _worker.js
-          echo "    'Accept-Language': 'en-US,en;q=0.9'" >> _worker.js
-          echo "  }" >> _worker.js
+          echo "// Scamalytics欺诈防护" >> _worker.js
+          echo "const securityHeaders = {" >> _worker.js
+          echo "  'X-Content-Type-Options': 'nosniff'," >> _worker.js
+          echo "  'X-Frame-Options': 'DENY'," >> _worker.js
+          echo "  'Content-Security-Policy': \"default-src 'none'\"," >> _worker.js
+          echo "  'CF-IPCountry': 'US'," >> _worker.js
+          echo "  'X-Proxy-Location': 'US'" >> _worker.js
           echo "};" >> _worker.js
 
       - name: Deploy to Cloudflare
@@ -78,3 +75,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Force push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://github.com/${{ github.repository }}
+          git add -f _worker.js
+          git commit -m "🛡️ 100% Camouflage" --allow-empty
+          git push origin HEAD:main -f
