@@ -1,12 +1,11 @@
-name: Cloudflare Worker Final Deploy
+name: Cloudflare Worker Final Fix
 
 on:
   push:
     branches: [main]
 
 env:
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CI: true  # 关键修复：声明CI环境
 
 jobs:
   deploy:
@@ -35,14 +34,16 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Configure Wrangler
+      - name: Configure deployment
         run: |
           cat << EOF > wrangler.toml
           name = "bpb-worker"
           main = "_worker.js"
-          compatibility_date = "2024-05-01"
-          account_id = "$CLOUDFLARE_ACCOUNT_ID"
+          compatibility_date = "$(date +'%Y-%m-%d')"
+          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
           EOF
 
-      - name: Force Deploy
-        run: wrangler deploy _worker.js --yes
+      - name: Deploy with CI mode
+        run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
