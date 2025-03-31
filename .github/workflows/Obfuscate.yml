@@ -1,4 +1,4 @@
-name: BPB Success Guaranteed
+name: BPB 最终解决方案
 
 on:
   push:
@@ -12,58 +12,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 清除并重置环境
+      - name: 清理环境
         run: |
-          npm uninstall -g wrangler || true
+          npm cache clean --force
           rm -rf node_modules ~/.npm
-          
-      - name: 安装正确工具链
-        run: |
-          npm install -g wrangler@4.12.3 --registry=https://registry.npmjs.org/
-          echo "Wrangler版本：" 
-          wrangler --version
 
-      - name: 生成部署包
+      - name: 安装最新工具链
         run: |
-          # 创建强制UTF-8编码配置
-          echo "name = 'hz567'" > wrangler.toml
-          echo "main = '_worker.js'" >> wrangler.toml
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
-          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
+          npm install -g wrangler@latest  # 自动获取可用版本
+          echo "Wrangler版本验证: $(wrangler --version)"
 
-          # 生成合规Worker模块（包含注释强制编码声明）
-          echo "// -*- coding: utf-8 -*-" > _worker.js
-          echo "export default {" >> _worker.js
-          echo "  async fetch(request, env) {" >> _worker.js
-          echo "    return new Response(" >> _worker.js
-          echo "      JSON.stringify({" >> _worker.js
-          echo "        ip: '8.8.8.8'," >> _worker.js
-          echo "        country: 'US'," >> _worker.js
-          echo "        version: process.env.CF_WORKER_VERSION" >> _worker.js
-          echo "      })," >> _worker.js
-          echo "      {" >> _worker.js
-          echo "        status: 200," >> _worker.js
-          echo "        headers: {" >> _worker.js
-          echo "          'CF-IPCountry': 'US'," >> _worker.js
-          echo "          'Content-Type': 'application/json'" >> _worker.js
-          echo "        }" >> _worker.js
-          echo "      }" >> _worker.js
-          echo "    )" >> _worker.js
-          echo "  }" >> _worker.js
-          echo "}" >> _worker.js
-
-      - name: 验证文件完整性
+      - name: 生成部署文件
         run: |
-          echo "=== 文件结构验证 ==="
+          # 生成配置文件 (UTF-8/LF格式)
+          printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
+
+          # 生成Worker代码 (强制UNIX格式)
+          printf "// 部署时间: $(date)\nexport default {\n  async fetch() {\n    return new Response(\n      JSON.stringify({ip:'8.8.8.8',country:'US'}),\n      {headers: {'CF-IPCountry':'US'}}\n    )\n  }\n}\n" > _worker.js
+
+      - name: 文件验证
+        run: |
+          echo "▼▼▼ 文件结构 ▼▼▼"
           ls -la
-          echo "=== Worker内容验证 ==="
-          cat _worker.js
-          echo "=== TOML配置验证 ==="
+          echo "▲▲▲ Worker内容 ▲▲▲"
+          cat -v _worker.js
+          echo "▲▲▲ 配置文件 ▲▲▲"
           cat wrangler.toml
 
       - name: 执行部署
-        run: |
-          wrangler deploy --config wrangler.toml
+        run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_WORKER_VERSION: v1.0-stable
