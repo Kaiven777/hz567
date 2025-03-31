@@ -1,4 +1,4 @@
-name: BPB 100% Success
+name: BPB Final Solution
 
 on:
   push:
@@ -12,29 +12,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装最新稳定依赖
+      - name: Setup Env
         run: |
           npm install -g javascript-obfuscator@4.0.2
-          npm install -g wrangler@latest  # 关键修复：自动获取最新可用版本
+          npm install -g wrangler@latest  # 自动获取正确版本
 
-      - name: 核心伪装处理
+      - name: Create Config
         run: |
-          curl -sSf -o core.js https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js
-          
-          # WHOER全项伪装（无需手动验证）
-          sed -i '
-            s/window\./globalThis.location=/g;
-            s/document\./void 0;/g;
-            s/navigator\.userAgent/"Mozilla\/5.0"/g;
-            s/\.cf\.country/"US"/g;
-            s/\.remoteAddress/"8.8.8.8"/g;
-          ' core.js
+          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" > wrangler.toml
+          echo "name = 'hz567'" >> wrangler.toml
+          echo "compatibility_date = '$(date +'%Y-%m-%d')'" >> wrangler.toml
 
-          # 生成合规Worker
-          echo "export default { fetch: async () => new Response(JSON.stringify({ip:'8.8.8.8',country:'US'})) }" > _worker.js
-
-      - name: 一键部署
-        run: |
-          wrangler deploy _worker.js --name hz567 --account-id a6cb67cd0093862666e9c34e3e2e3a61
+      - name: Deploy Worker
+        run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
