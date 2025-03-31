@@ -12,20 +12,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装最新工具链
+      - name: 安装正确版本工具链
         run: |
-          npm install -g wrangler@latest
-          rm -rf node_modules  # 清除历史残留
+          npm install -g wrangler@4.20.1  # 手动指定稳定版本
+          npm cache clean --force
 
-      - name: 生成合规Worker
+      - name: 生成配置文件
         run: |
-          # 创建强制配置文件
+          # 创建合规配置文件
           echo "name = 'hz567'" > wrangler.toml
-          echo "main = './_worker.js'" >> wrangler.toml  # 关键修复路径
+          echo "main = '_worker.js'" >> wrangler.toml
           echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
           echo "compatibility_date = '2024-03-01'" >> wrangler.toml
 
-          # 生成ES模块文件
+          # 生成Worker模块(ESM格式)
           echo "export default {" > _worker.js
           echo "  async fetch(request, env) {" >> _worker.js
           echo "    return new Response(" >> _worker.js
@@ -35,14 +35,8 @@ jobs:
           echo "  }" >> _worker.js
           echo "}" >> _worker.js
 
-      - name: 强制路径验证
+      - name: 执行部署
         run: |
-          ls -la  # 显示文件结构
-          cat _worker.js  # 验证文件内容
-          cat wrangler.toml  # 验证配置文件
-
-      - name: 最终部署
-        run: |
-          wrangler deploy --legacy-env=false --verbose
+          wrangler deploy --config wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
