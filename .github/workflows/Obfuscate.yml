@@ -1,4 +1,4 @@
-name: Cloudflare Worker Final Fix
+name: Cloudflare Worker 终极修复方案
 
 on:
   push:
@@ -9,19 +9,47 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # 全局环境变量声明
+    env:
+      CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
     steps:
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 设置Node.js环境
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
 
-      - name: Install Wrangler
+      - name: 安装Wrangler
         run: npm install -g wrangler@4.6.0
 
-      - name: Build worker
+      - name: 预验证配置
+        run: |
+          # 敏感信息屏蔽输出
+          echo "::add-mask::$CF_API_TOKEN"
+          echo "::add-mask::$CF_ACCOUNT_ID"
+          
+          # 密钥存在性检查
+          if [ -z "$CF_API_TOKEN" ]; then
+            echo "::error::❌ 必须在仓库Secrets中设置CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+          
+          if [ -z "$CF_ACCOUNT_ID" ]; then
+            echo "::error::❌ 必须在仓库Secrets中设置CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+
+          # 账户ID格式验证
+          if [[ ! "$CF_ACCOUNT_ID" =~ ^[a-f0-9]{32}$ ]]; then
+            echo "::error::❌ 账户ID格式错误（需32位小写十六进制）"
+            exit 1
+          fi
+
+      - name: 构建Worker文件
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
@@ -31,27 +59,11 @@ jobs:
             --compact true \
             --rename-globals false
 
-      - name: Validate Secrets
-        run: |
-          # 强制检查密钥存在性
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error::❌ 必须设置 CLOUDFLARE_API_TOKEN 密钥"
-            exit 1
-          fi
-          
-          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::error::❌ 必须设置 CLOUDFLARE_ACCOUNT_ID 密钥"
-            exit 1
-          fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Deploy to Cloudflare
+      - name: 部署到Cloudflare
         run: |
           wrangler deploy _worker.js \
-            --name bpb-worker \
-            --compatibility-date $(date +'%Y-%m-%d')
+            --name bpb-worker-$GITHUB_RUN_ID \
+            --compatibility-date $(date +'%Y-%m-%d') \
+            --account-id $CF_ACCOUNT_ID
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ env.CF_API_TOKEN }}
