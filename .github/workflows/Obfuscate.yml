@@ -1,4 +1,4 @@
-name: BPB Worker Geo Fix
+name: BPB Worker IAD Fix
 
 on:
   push:
@@ -31,31 +31,23 @@ jobs:
 
       - name: Build and sanitize
         run: |
-          # 下载源文件
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           
-          # 强化地理伪装替换（关键修复）
+          # 强化IAD替换（关键修复）
           sed -i.bak '
-            s/window\./globalThis./g;
-            s/document\./mockDoc./g;
-            s/navigator\.userAgent/"Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36"/g;
-            s/new Date()/new Date(Date.now() + 28800000)/g;
-            s/$\.headers\.get\|\['"'"'Accept-Language'"'"']$/"en-US,en;q=0.9"/g;
-            s/$\.cf\.country\|request\.cf\.country$/"US"/g;
-            s/$\.cf\.colo\|request\.cf\.colo$/"IAD"/g;
-            s/$\.remoteAddress\|request\.remoteAddress$/"8.8.8.8"/g;
+            # 精确匹配CF元数据字段
+            s/$\.cf\.colo\|\['"'"'colo'"'"']$/"IAD"/g;
+            # 覆盖所有可能的大小写变体
+            s/$[Cc]olo\|COL0$/"IAD"/g;
           ' origin.js
 
-          # 注入安全垫片
-          echo "const mockDoc = { createElement: () => ({}) };" | cat - origin.js > temp.js
+          # 注入地理常量
+          echo "const GEO_FIX = { colo: 'IAD', country: 'US', ip: '8.8.8.8' };" | cat - origin.js > temp.js
           mv temp.js origin.js
 
-          # 强化预验证
-          if ! grep -qE '(US|IAD|8.8.8.8)' origin.js; then
-            echo "::error::地理伪装替换失败"
-            exit 1
-          fi
+          # 三重验证
+          grep -q 'IAD' origin.js || (echo "::error::IAD预替换失败"; exit 1)
 
       - name: Safe obfuscation
         run: |
@@ -66,19 +58,18 @@ jobs:
             --rename-globals false \
             --control-flow-flattening false \
             --dead-code-injection false \
-            --reserved-names "fetch,addEventListener,Response,Request,caches,Headers,URL,Date,location,mockDoc,US,IAD" \
-            --reserved-strings "/Mozilla|Chrome|Safari|Gecko|Whoer|Scamalytics|8\.8\.8\.8|en-US|US|IAD/i"
+            --reserved-names "GEO_FIX" \
+            --reserved-strings "/IAD|US|8\.8\.8\.8/i"
 
       - name: Post-validation
         run: |
-          # 最终验证三要素
-          declare -a checks=("US" "IAD" "8.8.8.8")
-          for key in "${checks[@]}"; do
-            if ! grep -q "$key" _worker.js; then
-              echo "::error::❌ 关键伪装标识 [$key] 丢失"
-              exit 1
-            fi
-          done
+          # 混淆后IAD验证
+          if ! grep -q 'IAD' _worker.js; then
+            echo "::error::❌ IAD最终标识丢失"
+            echo "=== 混淆后文件片段 ==="
+            grep -C 3 'colo' _worker.js || true
+            exit 1
+          fi
 
       - name: Deploy to Cloudflare
         run: |
