@@ -1,4 +1,4 @@
-name: BPB Ultimate
+name: BPB Final Fix
 
 on:
   push:
@@ -7,31 +7,30 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装必要依赖
+      - name: 安装依赖
         run: npm install -g wrangler@latest
 
-      - name: 生成Worker文件
+      - name: 生成配置文件
         run: |
-          echo "export default {" > _worker.js
-          echo "  async fetch(request) {" >> _worker.js
-          echo "    return new Response(" >> _worker.js
-          echo "      JSON.stringify({ ip: '8.8.8.8', country: 'US' })," >> _worker.js
-          echo "      { headers: { 'CF-IPCountry': 'US' } }" >> _worker.js
-          echo "    )" >> _worker.js
-          echo "  }" >> _worker.js
-          echo "}" >> _worker.js
-
+          # 创建必要配置文件
           echo "name = 'hz567'" > wrangler.toml
           echo "main = '_worker.js'" >> wrangler.toml
           echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
+          echo "compatibility_date = '2024-03-01'" >> wrangler.toml  # 关键修复
 
-      - name: 部署到Cloudflare
-        run: |
-          wrangler deploy --config wrangler.toml
+          # 生成Worker代码
+          echo "export default {" > _worker.js
+          echo "  async fetch() {" >> _worker.js
+          echo "    return new Response(JSON.stringify({ip:'8.8.8.8',country:'US'}))" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "}" >> _worker.js
+
+      - name: 部署到CF
+        run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
