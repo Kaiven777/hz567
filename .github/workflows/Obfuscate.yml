@@ -1,4 +1,4 @@
-name: BPB Final Fix
+name: BPB Final Success
 
 on:
   push:
@@ -12,31 +12,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 环境净化
+      - name: 安装最新稳定版
         run: |
-          npm cache clean --force
-          rm -rf node_modules ~/.npm
-
-      - name: 安装最新工具链
-        run: |
-          npm install -g wrangler@4.20.1
-          echo "Wrangler版本验证: $(wrangler --version)"
+          npm install -g wrangler@latest  # 自动获取有效版本
+          wrangler --version
 
       - name: 生成部署文件
         run: |
-          # 生成标准配置文件（强制UNIX格式）
-          printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
+          # 创建配置文件（强制绝对路径）
+          echo "name = 'hz567'" > wrangler.toml
+          echo "main = '${{ github.workspace }}/_worker.js'" >> wrangler.toml
+          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
+          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
 
-          # 生成ES模块Worker（包含完整响应头）
-          printf "// -*- coding: utf-8 -*-\nexport default {\n  async fetch(request, env) {\n    return new Response(\n      JSON.stringify({\n        ip: '8.8.8.8',\n        country: 'US',\n        timestamp: Date.now()\n      }),\n      {\n        status: 200,\n        headers: new Headers({\n          'CF-IPCountry': 'US',\n          'Content-Type': 'application/json'\n        })\n      }\n    )\n  }\n}\n" > _worker.js
-
-          # 文件完整性验证
-          echo "▼▼▼ 文件结构 ▼▼▼" && ls -la
-          echo "▼▼▼ Worker内容 ▼▼▼" && cat -v _worker.js
-          echo "▼▼▼ 配置验证 ▼▼▼" && cat wrangler.toml
+          # 生成Worker核心代码
+          echo "export default {" > _worker.js
+          echo "  async fetch(request, env) {" >> _worker.js
+          echo "    return new Response(" >> _worker.js
+          echo "      JSON.stringify({" >> _worker.js
+          echo "        ip: '8.8.8.8'," >> _worker.js
+          echo "        country: 'US'," >> _worker.js
+          echo "        success: true" >> _worker.js
+          echo "      })," >> _worker.js
+          echo "      {" >> _worker.js
+          echo "        status: 200," >> _worker.js
+          echo "        headers: {" >> _worker.js
+          echo "          'CF-IPCountry': 'US'," >> _worker.js
+          echo "          'Content-Type': 'application/json'" >> _worker.js
+          echo "        }" >> _worker.js
+          echo "      }" >> _worker.js
+          echo "    )" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "}" >> _worker.js
 
       - name: 执行部署
-        run: |
-          wrangler deploy --config wrangler.toml
+        run: wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
