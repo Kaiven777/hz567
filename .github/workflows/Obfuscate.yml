@@ -1,51 +1,72 @@
-name: BPB Final Success
+name: BPB Worker Ultimate Fix
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 1 * * *"
+
+permissions:
+  contents: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: 安装最新稳定版
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install -g javascript-obfuscator@4.0.2
+
+      - name: Process source
         run: |
-          npm install -g wrangler@latest  # 自动获取有效版本
-          wrangler --version
+          curl -sSf -o origin.js \
+            "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
+          
+          # 关键修复：增加路径验证
+          pwd && ls -la
 
-      - name: 生成部署文件
+          sed -i 's/window\./globalThis./g' origin.js
+
+      - name: Obfuscate code
         run: |
-          # 创建配置文件（强制绝对路径）
-          echo "name = 'hz567'" > wrangler.toml
-          echo "main = '${{ github.workspace }}/_worker.js'" >> wrangler.toml
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
-          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
+          javascript-obfuscator origin.js \
+            --output ./_worker.js \
+            --compact true \
+            --identifier-names-generator hexadecimal \
+            --rename-globals false \
+            --reserved-names "fetch,Response,Request"
 
-          # 生成Worker核心代码
-          echo "export default {" > _worker.js
-          echo "  async fetch(request, env) {" >> _worker.js
-          echo "    return new Response(" >> _worker.js
-          echo "      JSON.stringify({" >> _worker.js
-          echo "        ip: '8.8.8.8'," >> _worker.js
-          echo "        country: 'US'," >> _worker.js
-          echo "        success: true" >> _worker.js
-          echo "      })," >> _worker.js
-          echo "      {" >> _worker.js
-          echo "        status: 200," >> _worker.js
-          echo "        headers: {" >> _worker.js
-          echo "          'CF-IPCountry': 'US'," >> _worker.js
-          echo "          'Content-Type': 'application/json'" >> _worker.js
-          echo "        }" >> _worker.js
-          echo "      }" >> _worker.js
-          echo "    )" >> _worker.js
-          echo "  }" >> _worker.js
-          echo "}" >> _worker.js
+          # 文件存在性验证
+          if [ ! -f "_worker.js" ]; then
+            echo "::error::❌ _worker.js 生成失败"
+            exit 1
+          fi
 
-      - name: 执行部署
-        run: wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: Commit and push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 强制添加文件到Git索引
+          git add -f ./_worker.js
+
+          # 验证变更
+          git status
+          
+          TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
+          git commit -m "🔧 Auto update [$TIMESTAMP]" --allow-empty
+          
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git push origin main -f
