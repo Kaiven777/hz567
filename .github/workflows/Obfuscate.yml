@@ -1,4 +1,4 @@
-name: BPB 终极解决方案
+name: BPB 完美解决方案
 
 on:
   push:
@@ -12,40 +12,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 强制清理环境
+      - name: 环境净化
         run: |
           npm cache clean --force
           rm -rf ~/.npm
-          sudo rm -rf node_modules
+          sudo rm -rf /usr/local/lib/node_modules/wrangler*
 
-      - name: 安装验证版工具
+      - name: 安装验证版工具链
         run: |
-          npm install -g wrangler@4.20.1 --registry=https://registry.npmmirror.com
-          echo "版本锁定成功：$(wrangler --version)"
+          npm install -g wrangler@4.12.3 --registry=https://registry.npmjs.org
+          echo "✅ 版本验证通过：$(wrangler --version)"
 
-      - name: 生成核心文件
+      - name: 生成终极Worker
         run: |
-          # 创建标准化Worker（WHOER全项伪装）
+          # WHOER全参数伪装模板
           cat <<EOF > _worker.js
           export default {
-            async fetch(request) {
+            async fetch(request, env) {
               return new Response(JSON.stringify({
                 ip: '8.8.8.8',
                 country: 'US',
-                timezone: 'America/New_York'
-              }), {
-                headers: new Headers({
+                timezone: 'America/New_York',
+                headers: {
                   'CF-IPCountry': 'US',
                   'X-Proxy-Location': 'US',
+                  'Accept-Language': 'en-US,en;q=0.9'
+                }
+              }), {
+                headers: new Headers({
+                  'Content-Type': 'application/json',
+                  'X-Content-Type-Options': 'nosniff',
                   'Content-Security-Policy': "default-src 'none'",
-                  'X-Content-Type-Options': 'nosniff'
+                  'X-Frame-Options': 'DENY'
                 })
               })
             }
           }
           EOF
 
-          # 生成强制配置文件
+          # 强制配置文件
           printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
 
       - name: 执行部署
