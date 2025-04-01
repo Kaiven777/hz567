@@ -1,4 +1,4 @@
-name: BPB 最终修复方案
+name: BPB 终极修复方案
 
 on:
   push:
@@ -14,35 +14,30 @@ jobs:
 
       - name: 环境净化
         run: |
-          # 清理所有可能存在的旧版本
-          npm uninstall -g wrangler
+          # 清理所有历史残留
           npm cache clean --force
           rm -rf ~/.npm
           sudo rm -rf /usr/local/lib/node_modules/wrangler*
 
-      - name: 安装指定版本
+      - name: 安装验证可用版本
         run: |
-          npm install -g wrangler@4.20.1  # 确认支持verbose的版本
-          echo "验证版本：" $(wrangler --version)
+          npm install -g wrangler@3.6.0  # 确认存在的稳定版本
+          echo "✅ 安装版本验证：" $(wrangler --version)
 
-      - name: 生成Worker文件
+      - name: 生成合规配置
         run: |
-          # 创建合规配置
-          cat <<EOF > wrangler.toml
-          name = "bpb-$(date +%s)"
-          main = "_worker.js"
-          account_id = "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
-          compatibility_date = "$(date +'%Y-%m-%d')"
-          EOF
+          # 动态生成唯一名称
+          echo "name = 'bpb-$(date +%s)'" > wrangler.toml
+          echo "main = '_worker.js'" >> wrangler.toml
+          echo "account_id = '${{ secrets.CLOUDFLARE_ACCOUNT_ID }}'" >> wrangler.toml
+          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
 
-          # 生成最小化代码
+          # 生成最小化Worker
           echo "export default { fetch: () => new Response('OK') }" > _worker.js
 
       - name: 执行部署
         run: |
           wrangler deploy
-          curl -s https://bpb-$CLOUDFLARE_ACCOUNT_ID.workers.dev -v
+          curl -s https://bpb-${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev -v
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          WRANGLER_LOG: debug  # 新版日志参数
