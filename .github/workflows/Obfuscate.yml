@@ -20,26 +20,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 生成临时锁文件
+      - name: 生成有效锁文件
         run: |
-          npm init -y --scope=temp
-          echo "{}" > package-lock.json  # 创建空锁文件
-          git add package.json package-lock.json
-          git commit -m "Add temp lockfile" || true
+          # 创建有效package.json
+          echo '{"name":"temp","version":"1.0.0"}' > package.json
+          # 生成真实lock文件
+          npm install --package-lock-only --no-audit
+          git add package*
 
-      - name: Setup Node.js
+      - name: Setup Node.js (修复缓存路径)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
           cache: 'npm'
-          cache-dependency-path: |
-            ​**/package-lock.json
-            !**/node_modules/**  # 绕过模块路径检查
+          cache-dependency-path: 'package-lock.json'
 
       - name: 安装全局依赖
-        run: |
-          npm install -g javascript-obfuscator@4.0.2
-          npm cache clean --force  # 清理无效缓存
+        run: npm install -g javascript-obfuscator@4.0.2
 
       - name: 获取并处理源码
         run: |
@@ -58,14 +55,14 @@ jobs:
 
           [ -f "_worker.js" ] || (echo "::error::❌ 混淆失败"; exit 1)
 
-      - name: 提交变更
+      - name: 清理并提交
         run: |
+          # 移除临时文件
+          git reset --hard HEAD
+          rm package.json package-lock.json
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # 清理临时文件
-          git reset --hard HEAD~1  # 回退临时提交
-          rm package.json package-lock.json
           
           git add -f _worker.js
           TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
