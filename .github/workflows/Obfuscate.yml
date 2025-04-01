@@ -1,73 +1,46 @@
-name: BPB Worker Final Fix
+name: BPB Final Solution
 
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: "0 1 * * *"
-
-permissions:
-  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          clean: true
+      - uses: actions/checkout@v4
 
-      - name: 创建虚拟锁文件
+      - name: 安装最新工具链
         run: |
-          echo '{"name":"temp","version":"0.0.0"}' > package.json
-          echo '{"name":"temp","version":"0.0.0","lockfileVersion":3}' > package-lock.json
+          npm install -g wrangler@latest
+          npm cache clean --force
 
-      - name: Setup Node.js (缓存修复)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20.x"
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json'  # 指向有效文件
-
-      - name: 安装混淆工具
-        run: npm install -g javascript-obfuscator@4.0.2
-
-      - name: 处理原始代码
+      - name: 生成合规Worker
         run: |
-          curl -sSf -o origin.js \
-            "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          sed -i 's/window\./globalThis./g' origin.js
+          # 创建配置文件（强制ESM格式）
+          echo "name = 'hz567'" > wrangler.toml
+          echo "main = './_worker.js'" >> wrangler.toml
+          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
+          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
 
-      - name: 生成混淆代码
+          # 生成ES模块文件（带响应头）
+          echo "export default {" > _worker.js
+          echo "  async fetch(request, env) {" >> _worker.js
+          echo "    return new Response(" >> _worker.js
+          echo "      JSON.stringify({ip:'8.8.8.8',country:'US'})," >> _worker.js
+          echo "      {status: 200, headers: {'CF-IPCountry':'US'}}" >> _worker.js
+          echo "    )" >> _worker.js
+          echo "  }" >> _worker.js
+          echo "}" >> _worker.js
+
+      - name: 验证配置
         run: |
-          javascript-obfuscator origin.js \
-            --output _worker.js \
-            --compact true \
-            --identifier-names-generator hexadecimal \
-            --control-flow-flattening true \
-            --reserved-names "fetch,Response,Request"
+          wrangler deploy --dry-run --verbose
 
-          # 严格验证文件
-          if [ $(wc -c < _worker.js) -lt 2048 ]; then
-            echo "::error::❌ 文件大小不足2KB，可能生成失败"
-            exit 1
-          fi
-
-      - name: 清理并提交
+      - name: 执行部署
         run: |
-          # 删除所有临时文件
-          rm -f package.json package-lock.json origin.js
-          
-          # 配置Git身份
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # 强制提交混淆文件
-          git add -f _worker.js
-          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-          git commit -m "🤖 自动更新 [$TIMESTAMP]" --allow-empty
-          git push origin main -f
+          wrangler deploy --config wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
