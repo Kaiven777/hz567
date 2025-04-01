@@ -20,23 +20,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js (Bypass Cache)
+      - name: Setup Node.js (禁用缓存)
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
           cache: 'npm'
-          cache-dependency-path: '**/nonexistent-file'  # 绕过缓存检查
+          cache-dependency-path: ' '  # 关键修复：使用空路径禁用缓存
 
-      - name: Install dependencies
+      - name: 安装混淆器
         run: npm install -g javascript-obfuscator@4.0.2
 
-      - name: Process source code
+      - name: 获取原始代码
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           sed -i 's/window\./globalThis./g' origin.js
 
-      - name: Obfuscate code
+      - name: 生成混淆代码
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
@@ -45,18 +45,18 @@ jobs:
             --rename-globals false \
             --reserved-names "fetch,Response,Request"
 
-          # 文件存在性验证
-          if [ ! -f "_worker.js" ]; then
-            echo "::error::❌ _worker.js generation failed"
+          # 文件验证
+          if [ $(stat -c%s "_worker.js") -lt 100 ]; then
+            echo "::error::❌ 文件大小异常"
             exit 1
           fi
 
-      - name: Commit and push
+      - name: 提交更新
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           git add -f _worker.js
-          TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
-          git commit -m "🔧 Auto update [$TIMESTAMP]" --allow-empty
+          TIMESTAMP=$(date +"UTC%Y-%m-%dT%H:%M:%SZ")
+          git commit -m "🚀 自动更新 [$TIMESTAMP]" --allow-empty
           git push origin main -f
