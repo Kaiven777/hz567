@@ -1,4 +1,4 @@
-name: BPB Ultimate Deploy
+name: BPB Final Fix
 
 on:
   push:
@@ -19,28 +19,21 @@ jobs:
 
       - name: 安装最新工具链
         run: |
-          npm install -g wrangler@latest
-          wrangler --version
+          npm install -g wrangler@4.20.1
+          echo "Wrangler版本验证: $(wrangler --version)"
 
       - name: 生成部署文件
         run: |
-          # 生成标准配置文件
-          echo "name = 'hz567'" > wrangler.toml
-          echo "main = './_worker.js'" >> wrangler.toml
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
-          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
+          # 生成标准配置文件（强制UNIX格式）
+          printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
 
-          # 生成ES模块格式Worker (强制UNIX编码)
-          printf "// -*- coding: utf-8 -*-\nexport default {\n  async fetch(request, env) {\n    return new Response(\n      JSON.stringify({\n        ip: '8.8.8.8',\n        country: 'US',\n        timestamp: Date.now()\n      }),\n      {\n        status: 200,\n        headers: {\n          'CF-IPCountry': 'US',\n          'Content-Type': 'application/json'\n        }\n      }\n    );\n  }\n}\n" > _worker.js
+          # 生成ES模块Worker（包含完整响应头）
+          printf "// -*- coding: utf-8 -*-\nexport default {\n  async fetch(request, env) {\n    return new Response(\n      JSON.stringify({\n        ip: '8.8.8.8',\n        country: 'US',\n        timestamp: Date.now()\n      }),\n      {\n        status: 200,\n        headers: new Headers({\n          'CF-IPCountry': 'US',\n          'Content-Type': 'application/json'\n        })\n      }\n    )\n  }\n}\n" > _worker.js
 
-      - name: 文件验证
-        run: |
-          echo "▼▼▼ 文件结构 ▼▼▼"
-          ls -la
-          echo "▼▼▼ Worker内容 ▼▼▼"
-          cat -v _worker.js
-          echo "▼▼▼ TOML配置 ▼▼▼"
-          cat wrangler.toml
+          # 文件完整性验证
+          echo "▼▼▼ 文件结构 ▼▼▼" && ls -la
+          echo "▼▼▼ Worker内容 ▼▼▼" && cat -v _worker.js
+          echo "▼▼▼ 配置验证 ▼▼▼" && cat wrangler.toml
 
       - name: 执行部署
         run: |
