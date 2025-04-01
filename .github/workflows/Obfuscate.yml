@@ -24,7 +24,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
+          cache: 'npm'  # 关键修复：使用标准缓存策略
+
+      - name: Generate lockfile
+        run: npm init -y && npm install --package-lock-only  # 生成空lock文件
 
       - name: Install dependencies
         run: npm install -g javascript-obfuscator@4.0.2
@@ -33,16 +36,12 @@ jobs:
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
-          
-          # 关键修复：增加路径验证
-          pwd && ls -la
-
           sed -i 's/window\./globalThis./g' origin.js
 
       - name: Obfuscate code
         run: |
           javascript-obfuscator origin.js \
-            --output ./_worker.js \
+            --output _worker.js \
             --compact true \
             --identifier-names-generator hexadecimal \
             --rename-globals false \
@@ -50,7 +49,7 @@ jobs:
 
           # 文件存在性验证
           if [ ! -f "_worker.js" ]; then
-            echo "::error::❌ _worker.js 生成失败"
+            echo "::error::❌ _worker.js generation failed"
             exit 1
           fi
 
@@ -59,14 +58,11 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # 强制添加文件到Git索引
-          git add -f ./_worker.js
-
-          # 验证变更
+          # 验证文件差异
           git status
+          git diff --staged
           
+          git add -f _worker.js
           TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
           git commit -m "🔧 Auto update [$TIMESTAMP]" --allow-empty
-          
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git push origin main -f
