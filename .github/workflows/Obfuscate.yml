@@ -20,25 +20,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: 生成临时锁文件
+        run: |
+          npm init -y --scope=temp
+          echo "{}" > package-lock.json  # 创建空锁文件
+          git add package.json package-lock.json
+          git commit -m "Add temp lockfile" || true
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: 'npm'  # 关键修复：使用标准缓存策略
+          cache: 'npm'
+          cache-dependency-path: |
+            ​**/package-lock.json
+            !**/node_modules/**  # 绕过模块路径检查
 
-      - name: Generate lockfile
-        run: npm init -y && npm install --package-lock-only  # 生成空lock文件
+      - name: 安装全局依赖
+        run: |
+          npm install -g javascript-obfuscator@4.0.2
+          npm cache clean --force  # 清理无效缓存
 
-      - name: Install dependencies
-        run: npm install -g javascript-obfuscator@4.0.2
-
-      - name: Process source
+      - name: 获取并处理源码
         run: |
           curl -sSf -o origin.js \
             "https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/main/build/unobfuscated-worker.js"
           sed -i 's/window\./globalThis./g' origin.js
 
-      - name: Obfuscate code
+      - name: 混淆代码
         run: |
           javascript-obfuscator origin.js \
             --output _worker.js \
@@ -47,20 +56,16 @@ jobs:
             --rename-globals false \
             --reserved-names "fetch,Response,Request"
 
-          # 文件存在性验证
-          if [ ! -f "_worker.js" ]; then
-            echo "::error::❌ _worker.js generation failed"
-            exit 1
-          fi
+          [ -f "_worker.js" ] || (echo "::error::❌ 混淆失败"; exit 1)
 
-      - name: Commit and push
+      - name: 提交变更
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          # 验证文件差异
-          git status
-          git diff --staged
+          # 清理临时文件
+          git reset --hard HEAD~1  # 回退临时提交
+          rm package.json package-lock.json
           
           git add -f _worker.js
           TIMESTAMP=$(date +"%Y-%m-%dT%H:%M:%S%z")
