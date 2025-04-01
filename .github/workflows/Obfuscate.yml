@@ -14,46 +14,53 @@ jobs:
 
       - name: 环境净化
         run: |
+          # 彻底清理npm环境
           npm cache clean --force
           rm -rf ~/.npm
           sudo rm -rf /usr/local/lib/node_modules/wrangler*
 
-      - name: 安装验证版工具链
+      - name: 安装最新稳定版
         run: |
-          npm install -g wrangler@4.12.3 --registry=https://registry.npmjs.org
-          echo "✅ 版本验证通过：$(wrangler --version)"
+          npm install -g wrangler@latest
+          echo "✅ 验证版本: $(wrangler --version)"
 
-      - name: 生成终极Worker
+      - name: 生成WHOER完美伪装Worker
         run: |
-          # WHOER全参数伪装模板
-          cat <<EOF > _worker.js
+          # 创建标准化Worker（带时区偏移和DNS伪装）
+          cat <<'EOF' > _worker.js
           export default {
-            async fetch(request, env) {
-              return new Response(JSON.stringify({
+            async fetch(request) {
+              const fakeGeo = {
                 ip: '8.8.8.8',
                 country: 'US',
                 timezone: 'America/New_York',
                 headers: {
                   'CF-IPCountry': 'US',
                   'X-Proxy-Location': 'US',
-                  'Accept-Language': 'en-US,en;q=0.9'
+                  'Accept-Language': 'en-US,en;q=0.9',
+                  'CF-RAY': `${Math.random().toString(36).substr(2,8)}-IAD`
                 }
-              }), {
+              }
+              
+              return new Response(JSON.stringify(fakeGeo), {
                 headers: new Headers({
                   'Content-Type': 'application/json',
                   'X-Content-Type-Options': 'nosniff',
                   'Content-Security-Policy': "default-src 'none'",
-                  'X-Frame-Options': 'DENY'
+                  'X-Frame-Options': 'DENY',
+                  'Strict-Transport-Security': 'max-age=31536000'
                 })
               })
             }
           }
           EOF
 
-          # 强制配置文件
+          # 生成强制配置文件
           printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
 
-      - name: 执行部署
-        run: wrangler deploy --verbose
+      - name: 部署验证
+        run: |
+          wrangler deploy --verbose
+          curl -s https://hz567.a6cb67cd0093862666e9c34e3e2e3a61.workers.dev | jq
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
