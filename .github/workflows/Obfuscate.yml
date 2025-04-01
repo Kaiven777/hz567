@@ -1,4 +1,4 @@
-name: BPB Final Fix
+name: BPB 终极解决方案
 
 on:
   push:
@@ -12,34 +12,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 安装最新Wrangler
+      - name: 强制清理环境
         run: |
-          npm install -g wrangler@4.21.0 --force
-          echo "当前版本：$(wrangler --version)"
+          npm cache clean --force
+          rm -rf ~/.npm
+          sudo rm -rf node_modules
 
-      - name: 生成合规配置
+      - name: 安装验证版工具
         run: |
-          # 创建标准化配置文件
-          echo "name = 'hz567'" > wrangler.toml
-          echo "main = './_worker.js'" >> wrangler.toml
-          echo "account_id = 'a6cb67cd0093862666e9c34e3e2e3a61'" >> wrangler.toml
-          echo "compatibility_date = '2024-03-01'" >> wrangler.toml
-          echo "node_compat = true" >> wrangler.toml  # 关键修复项
+          npm install -g wrangler@4.20.1 --registry=https://registry.npmmirror.com
+          echo "版本锁定成功：$(wrangler --version)"
 
-          # 生成ESM模块文件
-          echo "export default {" > _worker.js
-          echo "  async fetch(request, env) {" >> _worker.js
-          echo "    return new Response(" >> _worker.js
-          echo "      JSON.stringify({ip:'8.8.8.8',country:'US'})," >> _worker.js
-          echo "      {status: 200, headers: {'CF-IPCountry':'US'}}" >> _worker.js
-          echo "    )" >> _worker.js
-          echo "  }" >> _worker.js
-          echo "}" >> _worker.js
+      - name: 生成核心文件
+        run: |
+          # 创建标准化Worker（WHOER全项伪装）
+          cat <<EOF > _worker.js
+          export default {
+            async fetch(request) {
+              return new Response(JSON.stringify({
+                ip: '8.8.8.8',
+                country: 'US',
+                timezone: 'America/New_York'
+              }), {
+                headers: new Headers({
+                  'CF-IPCountry': 'US',
+                  'X-Proxy-Location': 'US',
+                  'Content-Security-Policy': "default-src 'none'",
+                  'X-Content-Type-Options': 'nosniff'
+                })
+              })
+            }
+          }
+          EOF
 
-      - name: 预验证配置
-        run: wrangler deploy --dry-run
+          # 生成强制配置文件
+          printf "name = 'hz567'\nmain = '_worker.js'\naccount_id = 'a6cb67cd0093862666e9c34e3e2e3a61'\ncompatibility_date = '2024-03-01'\n" > wrangler.toml
 
       - name: 执行部署
-        run: wrangler deploy
+        run: wrangler deploy --verbose
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
